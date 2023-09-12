@@ -11,6 +11,7 @@ FPS = 60
 
 # Game Variables
 GRAVITY = 0.75
+TILE_SIZE = 40
 
 # displaying a window (Max dimensions: 1280 x 720 px)
 SCREEN_WIDTH = 800
@@ -30,6 +31,7 @@ pygame.display.set_caption('Irregular Trooper')
 # player action variable
 shoot = False
 grenade = False
+grenade_thrown = False
 
 # load images
 # bullet & grenade
@@ -104,6 +106,22 @@ class Grenade(pygame.sprite.Sprite):
         self.rect.x += dx
         self.rect.y += dy
 
+        #countdown timer
+        self.timer -= 1
+        if self.timer <= 0:
+            self.kill()
+            explosion = Explosion(self.rect.x, self.rect.y, 0.5)
+            explosion_group.add(explosion)
+			#do damage to anyone that is nearby
+            if abs(self.rect.centerx - player.rect.centerx) < TILE_SIZE * 2 and \
+				abs(self.rect.centery - player.rect.centery) < TILE_SIZE * 2:
+                player.health -= 50
+                for enemy in enemy_group:
+                    if abs(self.rect.centerx - enemy.rect.centerx) < TILE_SIZE * 2 and \
+					abs(self.rect.centery - enemy.rect.centery) < TILE_SIZE * 2:
+                        enemy.health -= 50
+
+
 class Explosion(pygame.sprite.Sprite):
     def __init__(self, x, y, scale):
         pygame.sprite.Sprite.__init__(self)
@@ -118,38 +136,23 @@ class Explosion(pygame.sprite.Sprite):
         self.rect.center = (x, y)
         self.counter = 0
     
-    # def update(self):
-    #     # parabolic throw of grenade 
-    #     self.vel_y += GRAVITY
-    #     dx = (self.speed * self.direction)
-    #     dy= self.vel_y
+    def update(self):
+        EXPLOSION_SPEED = 4
+        #update explosion animation
+        self.counter += 1
 
-    #     # check collision with floor
-    #     if self.rect.bottom + dy > 300:
-    #         dy = 300 - self.rect.bottom
-    #         dx = 0
-
-    #     # check collision with walls & bounce the bomb
-    #     if self.rect.left + dx < 0 or self.rect.right + dx > SCREEN_WIDTH:
-    #         self.direction *= -1
-    #         dx = (self.speed * self.direction)
-        
-    #     # #check collision with characters
-    #     # if pygame.sprite.spritecollide(player, bullet_group, False):
-    #     #     if player.alive:
-    #     #         self.kill()
-    #     #         player.health -= 10
-
-    #     # if pygame.sprite.spritecollide(enemy, bullet_group, False):
-    #     #     if enemy.alive:
-    #     #         self.kill()
-    #     #         enemy.health -= 25
-    #     # update grenade position
-    #     self.rect.x += dx
-    #     self.rect.y += dy
+        if self.counter >= EXPLOSION_SPEED:
+            self.counter = 0
+            self.frame_index += 1
+            #if explosion animation is complete, delete it
+            if self.frame_index >= len(self.images):
+                self.kill()
+            else:
+                self.image = self.images[self.frame_index]
 
 
 # create sprite groups
+enemy_group = pygame.sprite.Group()
 bullet_group = pygame.sprite.Group()    
 grenade_group = pygame.sprite.Group()    
 explosion_group = pygame.sprite.Group()    
@@ -172,7 +175,7 @@ class Soldier(pygame.sprite.Sprite):
         self.start_ammo = ammo
         self.grenades = grenades
         self.start_grenades = grenades
-        self.grenade_thrown = False
+        # self.grenade_thrown = False
         self.shoot_cooldown = 0
         self.health = 100
         self.max_health = self.health
@@ -211,8 +214,8 @@ class Soldier(pygame.sprite.Sprite):
         # update cooldowns
         if self.shoot_cooldown > 0:
             self.shoot_cooldown -= 1      
-        if self.grenade_thrown:
-            pass
+        # if grenade_thrown:
+        #     pass
 
     def move(self):
         dx = 0
@@ -259,13 +262,6 @@ class Soldier(pygame.sprite.Sprite):
             self.shoot_cooldown = 20
             self.ammo -= 1
 
-    def throw_grenade(self):
-        if not self.grenade_thrown and self.grenades > 0:
-            grenade = Grenade((self.rect.centerx + (0.5 * self.rect.size[0] * self.direction)), self.rect.top, self.direction)
-            grenade_group.add(grenade)
-            self.grenade_thrown = True
-            self.grenades -= 1
-
     def update_animation(self):
         #update animation
         ANIMATION_COOLDOWN = 100
@@ -308,6 +304,9 @@ running = True
 
 player = Soldier('player', 200, 200, 3, 20, 8)
 enemy = Soldier('enemy', 400, 200, 3, 40, 0)
+enemy2 = Soldier('enemy', 300, 300, 3, 40, 0)
+enemy_group.add(enemy)
+enemy_group.add(enemy2)
 
 while running:
     clock.tick(FPS)
@@ -315,21 +314,28 @@ while running:
     
     player.update()
     player.draw(screen)
-    enemy.update()
-    enemy.draw(screen)
+    for enemy in enemy_group:
+        enemy.update()
+        enemy.draw(screen)
 
     # update and draw groups
     bullet_group.update()
     grenade_group.update()
+    explosion_group.update()
     bullet_group.draw(screen)
     grenade_group.draw(screen)
+    explosion_group.draw(screen)
 
     # update player actions 
     if player.alive:
         if shoot:
             player.shoot()
-        if grenade:
-            player.throw_grenade()
+        if grenade and not grenade_thrown and player.grenades > 0:
+            grenade = Grenade((player.rect.centerx + (0.5 * player.rect.size[0] * player.direction)), player.rect.top, player.direction)
+            grenade_group.add(grenade)
+            grenade_thrown = True
+            player.grenades -= 1
+
         if player.in_air:
             player.update_action(2) #2:jump
         elif player.moveLeft or player.moveRight:
@@ -373,6 +379,7 @@ while running:
                 shoot = False
             if event.key == pygame.K_q:
                 grenade = False
+                grenade_thrown = False
     
     # The pygame.display.flip() method is used
     # to update content on the display screen
